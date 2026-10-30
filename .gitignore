@@ -1,0 +1,21 @@
+# 依赖
+node_modules/
+
+# 运行期生成的数据（网关缓存 / 入库暂存）
+data/*.db
+
+# 本地环境变量
+.env
+.env.*
+
+# 日志
+*.log
+
+# 编辑器 / 系统文件
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# 截图等本地素材
+.screenshots/

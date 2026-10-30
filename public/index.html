@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>车间设备实时监控大屏</title>
+<script src="/vendor/echarts.min.js"></script>
+<style>
+  :root {
+    --bg: #0a0c0e;
+    --panel: #12171b;
+    --panel-2: #171d22;
+    --steel: #2c343a;
+    --steel-hi: #3d474f;
+    --text: #d5dde3;
+    --muted: #7a868e;
+    --amber: #f2a93b;
+    --cyan: #3fb8c8;
+    --green: #62b44d;
+    --red: #d7483a;
+    --mono: "Bahnschrift", "DIN Alternate", "Consolas", "Courier New", monospace;
+    --body: "Microsoft YaHei", "PingFang SC", sans-serif;
+    --pad: 32px;
+    --gap: 14px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background:
+      radial-gradient(1200px 600px at 50% -10%, rgba(63, 184, 200, .05), transparent 70%),
+      repeating-linear-gradient(0deg, rgba(255, 255, 255, .022) 0 1px, transparent 1px 28px),
+      repeating-linear-gradient(90deg, rgba(255, 255, 255, .022) 0 1px, transparent 1px 28px),
+      var(--bg);
+    color: var(--text);
+    font-family: var(--body);
+    min-height: 100vh;
+    padding: 0 0 28px;
+  }
+
+  /* ── 顶栏 ── */
+  .topbar {
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 24px; padding: 18px var(--pad) 14px;
+    background: linear-gradient(180deg, #141a1e, #0d1114);
+    border-bottom: 1px solid var(--steel);
+  }
+  .brand { display: flex; align-items: center; gap: 16px; }
+  .mark {
+    width: 46px; height: 46px; flex: none;
+    border: 1px solid var(--steel-hi);
+    background:
+      repeating-linear-gradient(135deg, var(--amber) 0 7px, #161a1d 7px 14px);
+    box-shadow: inset 0 0 0 4px #0d1114;
+  }
+  .eyebrow {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .28em;
+    color: var(--muted); text-transform: uppercase;
+  }
+  .brand h1 {
+    font-family: var(--mono); font-size: 22px; font-weight: 600;
+    letter-spacing: .12em; margin-top: 4px;
+  }
+
+  .topmeta { display: flex; align-items: stretch; gap: 0; }
+  .metric {
+    display: flex; flex-direction: column; justify-content: center;
+    padding: 0 18px; border-left: 1px solid var(--steel);
+  }
+  .metric .k {
+    font-family: var(--mono); font-size: 10px; letter-spacing: .2em;
+    color: var(--muted);
+  }
+  .metric .v {
+    font-family: var(--mono); font-size: 15px; letter-spacing: .08em;
+    color: var(--text); margin-top: 3px; font-variant-numeric: tabular-nums;
+  }
+  .status {
+    display: flex; align-items: center; gap: 8px;
+    padding: 0 6px 0 18px; border-left: 1px solid var(--steel);
+    font-family: var(--mono); font-size: 12px; letter-spacing: .1em;
+    color: var(--muted);
+  }
+  .status::before {
+    content: ""; width: 9px; height: 9px; flex: none;
+    border-radius: 50%; background: var(--amber);
+    box-shadow: 0 0 10px rgba(242, 169, 59, .7);
+  }
+  .status.ok { color: var(--green); }
+  .status.ok::before { background: var(--green); box-shadow: 0 0 10px rgba(98, 180, 77, .7); }
+  .status.bad { color: var(--red); }
+  .status.bad::before { background: var(--red); box-shadow: 0 0 10px rgba(215, 72, 58, .7); }
+
+  /* 安全条纹：整页唯一的高饱和记忆点 */
+  .hazard {
+    height: 6px;
+    background: repeating-linear-gradient(135deg, var(--amber) 0 14px, #0d1114 14px 28px);
+    opacity: .85;
+  }
+
+  /* ── 面板通用 ── */
+  .panel {
+    position: relative;
+    background: linear-gradient(180deg, var(--panel-2), var(--panel));
+    border: 1px solid var(--steel);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .045), 0 10px 26px rgba(0, 0, 0, .38);
+  }
+  .panel::after {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background:
+      linear-gradient(var(--muted), var(--muted)) left 6px top 6px / 8px 1px no-repeat,
+      linear-gradient(var(--muted), var(--muted)) left 6px top 6px / 1px 8px no-repeat,
+      linear-gradient(var(--muted), var(--muted)) right 6px bottom 6px / 8px 1px no-repeat,
+      linear-gradient(var(--muted), var(--muted)) right 6px bottom 6px / 1px 8px no-repeat;
+    opacity: .35;
+  }
+
+  /* ── 仪表读数 ── */
+  .readouts {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--gap);
+    padding: 22px var(--pad) 0;
+  }
+  .gauge {
+    display: flex; flex-direction: column;
+    min-height: 132px; padding: 18px 20px 16px;
+    border-left: 3px solid var(--steel-hi);
+  }
+  .gauge.temp { border-left-color: var(--amber); }
+  .gauge.rpm { border-left-color: var(--cyan); }
+  .gauge.count { border-left-color: var(--green); }
+  .gauge .label {
+    display: flex; justify-content: space-between; align-items: baseline;
+    font-family: var(--mono); font-size: 11px; letter-spacing: .18em;
+    color: var(--muted); text-transform: uppercase;
+  }
+  .gauge .label em { font-style: normal; color: var(--steel-hi); letter-spacing: .1em; }
+  .gauge .value {
+    font-family: var(--mono); font-size: 40px; font-weight: 600; line-height: 1;
+    margin: 10px 0 16px; font-variant-numeric: tabular-nums; letter-spacing: .02em;
+  }
+  .gauge .reading {
+    display: flex; align-items: baseline; gap: 6px;
+    margin: 10px 0 16px;
+  }
+  .gauge .reading .value { margin: 0; }
+  .gauge.temp .value { color: var(--amber); }
+  .gauge.rpm .value { color: var(--cyan); }
+  .gauge.count .value { color: var(--green); }
+  .gauge .value.temp-hot { color: var(--red); }
+  .gauge .unit {
+    font-family: var(--mono); font-size: 12px; color: var(--muted);
+    letter-spacing: .1em;
+  }
+  .gauge .bar {
+    height: 3px; margin-top: auto; background: #1e252a;
+  }
+  .gauge .bar i { display: block; height: 100%; width: 38%; background: var(--steel-hi); }
+  .gauge.temp .bar i { background: var(--amber); width: 62%; }
+  .gauge.rpm .bar i { background: var(--cyan); width: 48%; }
+  .gauge.count .bar i { background: var(--green); width: 74%; }
+
+  /* ── 控制台 ── */
+  .controls { padding: 14px var(--pad) 0; }
+  .actuator {
+    display: flex; align-items: center; flex-wrap: wrap; gap: var(--gap);
+    padding: 14px 20px;
+  }
+  .actuator .ctrl-label {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .18em;
+    color: var(--muted); text-transform: uppercase; white-space: nowrap;
+    padding-right: 14px; border-right: 1px solid var(--steel);
+  }
+  .select-wrap { position: relative; }
+  .select-wrap::after {
+    content: "▾"; position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+    font-family: var(--mono); color: var(--muted); pointer-events: none;
+  }
+  .gw-select {
+    appearance: none; -webkit-appearance: none;
+    height: 38px; padding: 0 38px 0 14px;
+    font-family: var(--mono); font-size: 14px; letter-spacing: .08em;
+    color: var(--text); background: #0e1316;
+    border: 1px solid var(--steel); border-radius: 2px; cursor: pointer;
+  }
+  .gw-select:hover { border-color: var(--steel-hi); }
+  .gw-select:focus-visible { outline: 2px solid var(--cyan); outline-offset: 1px; }
+
+  .speed-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    height: 38px; padding: 0 20px;
+    font-family: var(--mono); font-size: 13px; letter-spacing: .1em;
+    color: var(--text);
+    background: linear-gradient(180deg, #1f272c, #161c20);
+    border: 1px solid var(--steel); border-radius: 2px; cursor: pointer;
+    transition: background .15s, border-color .15s, transform .08s;
+  }
+  .speed-btn:hover { border-color: var(--steel-hi); background: linear-gradient(180deg, #263038, #1a2126); }
+  .speed-btn:active { transform: translateY(1px); }
+  .speed-btn:focus-visible { outline: 2px solid var(--cyan); outline-offset: 1px; }
+  .speed-btn.active {
+    color: #0d1114; border-color: var(--amber);
+    background: linear-gradient(180deg, #f7ba58, var(--amber));
+    box-shadow: 0 0 0 1px rgba(242, 169, 59, .25), 0 0 18px rgba(242, 169, 59, .25);
+  }
+  .speed-btn:disabled { opacity: .45; cursor: not-allowed; transform: none; }
+
+  .ctrl-status {
+    margin-left: auto; padding-left: 14px; border-left: 1px solid var(--steel);
+    font-family: var(--mono); font-size: 12px; letter-spacing: .06em; color: var(--muted);
+  }
+
+  /* ── 曲线 ── */
+  .charts {
+    display: grid; grid-template-columns: 1fr 1fr; gap: var(--gap);
+    align-items: stretch;
+    padding: 14px var(--pad) 0;
+  }
+  .chart-box { display: flex; flex-direction: column; padding: 14px 16px 8px; }
+  .chart-box h3 {
+    display: flex; justify-content: space-between; align-items: baseline;
+    font-family: var(--mono); font-size: 12px; font-weight: 500;
+    letter-spacing: .16em; color: var(--muted); text-transform: uppercase;
+    padding: 0 4px 10px; border-bottom: 1px solid var(--steel);
+  }
+  .chart-box h3 span { color: var(--steel-hi); letter-spacing: .1em; font-size: 11px; }
+  .chart { flex: 1; width: 100%; min-height: 330px; margin-top: 6px; }
+
+  .footer {
+    display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px;
+    padding: 18px var(--pad) 0; margin-top: 14px;
+    font-family: var(--mono); font-size: 10px; letter-spacing: .18em;
+    color: var(--steel-hi); text-transform: uppercase;
+    border-top: 1px solid #1b2226;
+  }
+
+  @media (max-width: 1100px) {
+    .readouts { grid-template-columns: repeat(2, 1fr); }
+    .charts { grid-template-columns: 1fr; }
+    .chart { min-height: 300px; }
+  }
+  @media (max-width: 720px) {
+    :root { --pad: 16px; --gap: 12px; }
+    .topbar { flex-direction: column; align-items: flex-start; gap: 14px; }
+    .topmeta { width: 100%; }
+    .metric, .status { padding-left: 12px; padding-right: 12px; }
+    .readouts { grid-template-columns: 1fr; padding: 18px var(--pad) 0; }
+    .ctrl-status { margin-left: 0; border-left: 0; padding-left: 0; width: 100%; }
+    .footer { padding: 16px var(--pad) 0; }
+    .gauge .value { font-size: 32px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .speed-btn { transition: none; }
+  }
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="brand">
+    <div class="mark" aria-hidden="true"></div>
+    <div>
+      <p class="eyebrow">Factory Floor · Line 01</p>
+      <h1>车间设备实时监控</h1>
+    </div>
+  </div>
+  <div class="topmeta">
+    <div class="metric"><span class="k">SYSTEM</span><span class="v">IOT-MON</span></div>
+    <div class="metric"><span class="k">LOCAL TIME</span><span class="v" id="clock">--:--:--</span></div>
+    <div class="status" id="connStatus">连接中...</div>
+  </div>
+</div>
+<div class="hazard" aria-hidden="true"></div>
+
+<section class="readouts">
+  <div class="panel gauge">
+    <div class="label">当前设备 <em>DEVICE</em></div>
+    <div class="value" id="deviceId">-</div>
+    <div class="bar"><i></i></div>
+  </div>
+  <div class="panel gauge temp">
+    <div class="label">实时温度 <em>TEMP</em></div>
+    <div class="reading"><span class="value" id="temperature">-</span><span class="unit">°C</span></div>
+    <div class="bar"><i></i></div>
+  </div>
+  <div class="panel gauge rpm">
+    <div class="label">实时转速 <em>SPEED</em></div>
+    <div class="reading"><span class="value" id="speed">-</span><span class="unit">rpm</span></div>
+    <div class="bar"><i></i></div>
+  </div>
+  <div class="panel gauge count">
+    <div class="label">数据总量 <em>RECORDS</em></div>
+    <div class="reading"><span class="value" id="totalCount">-</span><span class="unit">条</span></div>
+    <div class="bar"><i></i></div>
+  </div>
+</section>
+
+<section class="controls">
+  <div class="panel actuator">
+    <span class="ctrl-label">转速远程控制 / Actuator</span>
+    <div class="select-wrap">
+      <select id="gwSelect" class="gw-select" aria-label="选择网关">
+        <option value="gw1">网关 gw1</option>
+        <option value="gw2">网关 gw2</option>
+        <option value="gw3">网关 gw3</option>
+      </select>
+    </div>
+    <button class="speed-btn" data-level="A" onclick="setSpeed('A')">A 档 · 3000 rpm</button>
+    <button class="speed-btn" data-level="B" onclick="setSpeed('B')">B 档 · 2000 rpm</button>
+    <button class="speed-btn" data-level="C" onclick="setSpeed('C')">C 档 · 1000 rpm</button>
+    <span class="ctrl-status" id="speedStatus">当前档位：-</span>
+  </div>
+</section>
+
+<section class="charts">
+  <div class="panel chart-box">
+    <h3>温度趋势 <span>TEMP · 5 MIN</span></h3>
+    <div id="tempChart" class="chart"></div>
+  </div>
+  <div class="panel chart-box">
+    <h3>转速趋势 <span>SPEED · 5 MIN</span></h3>
+    <div id="speedChart" class="chart"></div>
+  </div>
+</section>
+
+<footer class="footer">
+  <span>Source · MQTT QoS1 → TDengine</span>
+  <span>Push · WebSocket · 回填 5s</span>
+</footer>
+
+<script>
+// ── 顶部时钟 ──
+const clockEl = document.getElementById('clock');
+function tickClock() {
+  const d = new Date();
+  clockEl.textContent = [d.getHours(), d.getMinutes(), d.getSeconds()]
+    .map((n) => String(n).padStart(2, '0')).join(':');
+}
+tickClock();
+setInterval(tickClock, 1000);
+
+// ── 初始化 ECharts ──
+const tempChart = echarts.init(document.getElementById('tempChart'));
+const speedChart = echarts.init(document.getElementById('speedChart'));
+
+const AXIS_COLOR = '#7a868e';
+const SPLIT_COLOR = '#232b31';
+
+const tempOpt = {
+  backgroundColor: 'transparent',
+  grid: { left: 54, right: 20, top: 26, bottom: 30 },
+  tooltip: {
+    trigger: 'axis',
+    backgroundColor: 'rgba(18, 23, 27, .95)',
+    borderColor: '#2c343a',
+    textStyle: { color: '#d5dde3', fontFamily: 'Consolas, monospace', fontSize: 12 },
+  },
+  xAxis: {
+    type: 'time',
+    axisLabel: { color: AXIS_COLOR, fontFamily: 'Consolas, monospace', fontSize: 10 },
+    axisLine: { lineStyle: { color: '#2c343a' } },
+    splitLine: { show: false },
+  },
+  // 固定量程：温度传感器 15~35°C，波动才看得清（自动边界会压平曲线）
+  yAxis: {
+    type: 'value', name: '°C', min: 15, max: 35,
+    nameTextStyle: { color: AXIS_COLOR, fontFamily: 'Consolas, monospace' },
+    axisLabel: { color: AXIS_COLOR, fontFamily: 'Consolas, monospace', fontSize: 10 },
+    axisLine: { lineStyle: { color: '#2c343a' } },
+    splitLine: { lineStyle: { color: SPLIT_COLOR } },
+  },
+  series: [{
+    name: '温度', type: 'line', showSymbol: false, smooth: true,
+    lineStyle: { width: 2, color: '#f2a93b' },
+    itemStyle: { color: '#f2a93b' },
+    areaStyle: { opacity: 1, color: 'rgba(242, 169, 59, .12)' },
+    data: [],
+  }],
+};
+
+const speedOpt = {
+  backgroundColor: 'transparent',
+  grid: { left: 64, right: 20, top: 26, bottom: 30 },
+  tooltip: {
+    trigger: 'axis',
+    backgroundColor: 'rgba(18, 23, 27, .95)',
+    borderColor: '#2c343a',
+    textStyle: { color: '#d5dde3', fontFamily: 'Consolas, monospace', fontSize: 12 },
+  },
+  xAxis: {
+    type: 'time',
+    axisLabel: { color: AXIS_COLOR, fontFamily: 'Consolas, monospace', fontSize: 10 },
+    axisLine: { lineStyle: { color: '#2c343a' } },
+    splitLine: { show: false },
+  },
+  // 转速跨档位范围大（1000~3000），量程跟随数据自适应 + 留边距，保证波动可见
+  yAxis: {
+    type: 'value', name: 'rpm',
+    min: (v) => v.min - 150, max: (v) => v.max + 150,
+    nameTextStyle: { color: AXIS_COLOR, fontFamily: 'Consolas, monospace' },
+    axisLabel: { color: AXIS_COLOR, fontFamily: 'Consolas, monospace', fontSize: 10 },
+    axisLine: { lineStyle: { color: '#2c343a' } },
+    splitLine: { lineStyle: { color: SPLIT_COLOR } },
+  },
+  series: [{
+    name: '转速', type: 'line', showSymbol: false, smooth: true,
+    lineStyle: { width: 2, color: '#3fb8c8' },
+    itemStyle: { color: '#3fb8c8' },
+    areaStyle: { opacity: 1, color: 'rgba(63, 184, 200, .12)' },
+    data: [],
+  }],
+};
+tempChart.setOption(tempOpt);
+speedChart.setOption(speedOpt);
+
+// 窗口缩放自适应
+window.addEventListener('resize', () => { tempChart.resize(); speedChart.resize(); });
+
+// ── 实时数据缓冲（WebSocket 推送 + 5 分钟历史回填）──
+const LIVE_WINDOW_MS = 5 * 60 * 1000;
+let liveRows = []; // { ts, deviceId, temperature, speed }
+
+// TDengine 返回的时间戳是字符串，MQTT 推送的是毫秒数，统一转成数字
+function tsMs(ts) {
+  if (typeof ts === 'number') return ts;
+  const n = Date.parse(String(ts).replace(' ', 'T'));
+  return Number.isNaN(n) ? Date.now() : n;
+}
+
+function renderCharts() {
+  tempChart.setOption({ ...tempOpt, series: buildSeries(liveRows, 'temperature') }, true);
+  speedChart.setOption({ ...speedOpt, series: buildSeries(liveRows, 'speed') }, true);
+}
+
+// ── 轮询刷新（每 5 秒回填历史/统计，按选中网关过滤；实时数据走 WebSocket）──
+async function refresh() {
+  const gateway = document.getElementById('gwSelect').value;
+  try {
+    const [latestRes, histRes, statsRes] = await Promise.all([
+      fetch(`/api/latest?gateway=${gateway}`),
+      fetch(`/api/history?minutes=5&gateway=${gateway}`),
+      fetch(`/api/stats?gateway=${gateway}`),
+    ]);
+    const latest = (await latestRes.json()).data;
+    const hist = (await histRes.json()).data;
+    const stats = (await statsRes.json()).data;
+
+    setStatus(true);
+
+    // 实时卡片
+    if (latest) {
+      document.getElementById('deviceId').textContent = latest.deviceId;
+      const tEl = document.getElementById('temperature');
+      tEl.textContent = latest.temperature;
+      tEl.classList.toggle('temp-hot', latest.temperature > 27);
+      document.getElementById('speed').textContent = latest.speed;
+    }
+    const total = stats.reduce((s, x) => s + x.count, 0);
+    document.getElementById('totalCount').textContent = total;
+
+    // 曲线：历史与已推送的实时点合并（保留比历史更新的点，避免回填时丢掉实时数据）
+    const histMax = hist.reduce((m, r) => Math.max(m, tsMs(r.ts)), 0);
+    liveRows = [...hist, ...liveRows.filter((r) => tsMs(r.ts) > histMax)]
+      .filter((r) => tsMs(r.ts) >= Date.now() - LIVE_WINDOW_MS);
+    renderCharts();
+  } catch (err) {
+    setStatus(false);
+  }
+}
+
+function setStatus(ok) {
+  const el = document.getElementById('connStatus');
+  el.textContent = ok ? '数据连接正常' : '数据连接断开';
+  el.className = 'status ' + (ok ? 'ok' : 'bad');
+}
+
+// 把历史数据按设备分组，生成 ECharts 多系列（每个网关一条线，颜色不同）
+const SERIES_COLORS = ['#f2a93b', '#3fb8c8', '#62b44d', '#c8a2e8', '#c9b458'];
+function buildSeries(hist, field) {
+  const groups = new Map();
+  for (const d of hist) {
+    if (!groups.has(d.deviceId)) groups.set(d.deviceId, []);
+    groups.get(d.deviceId).push([tsMs(d.ts), d[field]]);
+  }
+  return [...groups.entries()].map(([id, data], i) => ({
+    name: id,
+    type: 'line',
+    showSymbol: false,
+    smooth: true,
+    lineStyle: { width: 2, color: SERIES_COLORS[i % SERIES_COLORS.length] },
+    itemStyle: { color: SERIES_COLORS[i % SERIES_COLORS.length] },
+    areaStyle: { opacity: 1, color: 'rgba(255, 255, 255, .045)' },
+    data,
+  }));
+}
+
+// ── 调速控制 ──
+const SPEED_LABEL = { A: 'A（3000 rpm）', B: 'B（2000 rpm）', C: 'C（1000 rpm）' };
+
+async function setSpeed(level) {
+  const gateway = document.getElementById('gwSelect').value;
+  const btns = document.querySelectorAll('.speed-btn');
+  btns.forEach(b => b.disabled = true);
+  document.getElementById('speedStatus').textContent = `下发 ${gateway}...`;
+  try {
+    const res = await fetch('/api/speed', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ gateway, level }),
+    });
+    const json = await res.json();
+    if (json.ok) {
+      document.getElementById('speedStatus').textContent = `${json.data.gateway} 当前档位：${SPEED_LABEL[level]}`;
+      updateSpeedBtns(level);
+    } else {
+      document.getElementById('speedStatus').textContent = '指令失败：' + json.error;
+    }
+  } catch (err) {
+    document.getElementById('speedStatus').textContent = '指令失败：网络错误';
+  }
+  btns.forEach(b => b.disabled = false);
+}
+
+function updateSpeedBtns(level) {
+  document.querySelectorAll('.speed-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.level === level);
+  });
+}
+
+// 页面加载时恢复当前档位
+fetch('/api/speed').then(r => r.json()).then(json => {
+  if (json.ok && json.data.level) {
+    document.getElementById('speedStatus').textContent = `${json.data.gateway || ''} 当前档位：${SPEED_LABEL[json.data.level] || json.data.level}`;
+    if (json.data.gateway) document.getElementById('gwSelect').value = json.data.gateway;
+    updateSpeedBtns(json.data.level);
+  }
+}).catch(() => {});
+
+// 切换网关：所有显示（卡片/曲线/统计）跟着切换
+document.getElementById('gwSelect').addEventListener('change', () => {
+  const gw = document.getElementById('gwSelect').value;
+  document.getElementById('speedStatus').textContent = `当前网关：${gw}`;
+  updateSpeedBtns(null); // 清空档位高亮（档位属于具体网关）
+  refresh();
+});
+
+// ── WebSocket：设备数据实时推送（断线 3 秒自动重连），HTTP 轮询只做回填 ──
+function connectWS() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  const ws = new WebSocket(`${proto}://${location.host}/ws`);
+  ws.onopen = () => setStatus(true);
+  ws.onclose = () => { setStatus(false); setTimeout(connectWS, 3000); };
+  ws.onmessage = (e) => {
+    let msg;
+    try { msg = JSON.parse(e.data); } catch { return; }
+    if (msg.type !== 'data' || !msg.data) return;
+    const d = msg.data;
+    // 只更新当前选中网关（与历史接口的过滤口径保持一致）
+    if (d.deviceId !== document.getElementById('gwSelect').value) return;
+
+    // 卡片即时更新
+    document.getElementById('deviceId').textContent = d.deviceId;
+    const tEl = document.getElementById('temperature');
+    tEl.textContent = d.temperature;
+    tEl.classList.toggle('temp-hot', d.temperature > 27);
+    document.getElementById('speed').textContent = d.speed;
+
+    // 曲线即时追加（只保留最近 5 分钟）
+    liveRows.push({ ts: d.ts, deviceId: d.deviceId, temperature: d.temperature, speed: d.speed });
+    liveRows = liveRows.filter((r) => tsMs(r.ts) >= Date.now() - LIVE_WINDOW_MS);
+    renderCharts();
+    setStatus(true);
+  };
+}
+connectWS();
+
+refresh();
+setInterval(refresh, 5000);
+</script>
+</body>
+</html>

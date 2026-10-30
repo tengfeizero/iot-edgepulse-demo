@@ -1,0 +1,27 @@
+{
+  "name": "edgepulse",
+  "version": "1.0.0",
+  "description": "工业物联网全链路示例：Modbus 采集 → MQTT → TDengine → WebSocket 实时大屏",
+  "main": "src/mqtt/subscriber.js",
+  "scripts": {
+    "pub": "node src/mqtt/publisher.js",
+    "sub": "node src/mqtt/subscriber.js",
+    "device": "node src/device/device.js",
+    "control": "node src/device/control.js",
+    "modbus-sim": "node src/device/modbus-sim.js",
+    "modbus-reader": "node src/device/modbus-reader.js",
+    "gateway": "node src/gateway/gateway.js",
+    "farm": "node src/gateway/start-farm.js",
+    "sink": "node src/tsdb/tsdb-sink.js",
+    "query": "node src/tsdb/tsdb-query.js",
+    "dashboard": "node src/dashboard/dashboard-server.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^13.0.2",
+    "echarts": "^6.1.0",
+    "express": "^5.2.1",
+    "modbus-serial": "^8.0.25",
+    "mqtt": "^5.10.1",
+    "ws": "^8.21.2"
+  }
+}
